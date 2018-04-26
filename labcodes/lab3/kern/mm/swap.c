@@ -89,7 +89,7 @@ swap_out(struct mm_struct *mm, int n, int in_tick)
           // cprintf("i %d, SWAP: call swap_out_victim\n",i);
           int r = sm->swap_out_victim(mm, &page, in_tick);
           if (r != 0) {
-                    cprintf("i %d, swap_out: call swap_out_victim failed\n",i);
+                    cprintf("i=%d, swap_out: call swap_out_victim failed\n",i);
                   break;
           }          
           //assert(!PageReserved(page));
@@ -106,7 +106,7 @@ swap_out(struct mm_struct *mm, int n, int in_tick)
                     continue;
           }
           else {
-                    cprintf("swap_out: i %d, store page in vaddr 0x%x to disk swap entry %d\n", i, v, page->pra_vaddr/PGSIZE+1);
+                    cprintf("swap_out: i=%d, store page in vaddr 0x%x to disk swap entry %d\n", i, v, page->pra_vaddr/PGSIZE+1);
                     *ptep = (page->pra_vaddr/PGSIZE+1)<<8;
                     free_page(page);
           }
@@ -142,19 +142,27 @@ check_content_set(void)
 {
      *(unsigned char *)0x1000 = 0x0a;
      assert(pgfault_num==1);
+     cprintf("pgfault_num is %d\n",pgfault_num);
      *(unsigned char *)0x1010 = 0x0a;
+     cprintf("pgfault_num is %d\n",pgfault_num);
      assert(pgfault_num==1);
      *(unsigned char *)0x2000 = 0x0b;
+     cprintf("pgfault_num is %d\n",pgfault_num);
      assert(pgfault_num==2);
      *(unsigned char *)0x2010 = 0x0b;
+     cprintf("pgfault_num is %d\n",pgfault_num);
      assert(pgfault_num==2);
      *(unsigned char *)0x3000 = 0x0c;
+     cprintf("pgfault_num is %d\n",pgfault_num);
      assert(pgfault_num==3);
      *(unsigned char *)0x3010 = 0x0c;
+     cprintf("pgfault_num is %d\n",pgfault_num);
      assert(pgfault_num==3);
      *(unsigned char *)0x4000 = 0x0d;
+     cprintf("pgfault_num is %d\n",pgfault_num);
      assert(pgfault_num==4);
      *(unsigned char *)0x4010 = 0x0d;
+     cprintf("pgfault_num is %d\n",pgfault_num);
      assert(pgfault_num==4);
 }
 
@@ -213,7 +221,8 @@ check_swap(void)
      cprintf("setup Page Table vaddr 0~4MB OVER!\n");
      
      for (i=0;i<CHECK_VALID_PHY_PAGE_NUM;i++) {
-          check_rp[i] = alloc_page();
+          check_rp[i] = alloc_page();//分配四个物理页针 给check_rp
+          //cprintf("i = %d, check_rp is %x\n",i,page2pa(check_rp[i]));
           assert(check_rp[i] != NULL );
           assert(!PageProperty(check_rp[i]));
      }
@@ -226,32 +235,32 @@ check_swap(void)
      unsigned int nr_free_store = nr_free;
      nr_free = 0;
      for (i=0;i<CHECK_VALID_PHY_PAGE_NUM;i++) {
-        free_pages(check_rp[i],1);
+        free_pages(check_rp[i],1);//释放物理页 给freelist
      }
      assert(nr_free==CHECK_VALID_PHY_PAGE_NUM);
      
-     cprintf("set up init env for check_swap begin!\n");
+     cprintf("set up init env for check_swap begin! num of free pages is %d\n",nr_free);
      //setup initial vir_page<->phy_page environment for page relpacement algorithm 
 
      
      pgfault_num=0;
      
-     check_content_set();
+     check_content_set();//此处发生page fault 调用pgdir_alloc_page 给虚拟页分配物理页针 并写入页表
      assert( nr_free == 0);         
      for(i = 0; i<MAX_SEQ_NO ; i++) 
          swap_out_seq_no[i]=swap_in_seq_no[i]=-1;
      
      for (i= 0;i<CHECK_VALID_PHY_PAGE_NUM;i++) {
          check_ptep[i]=0;
-         check_ptep[i] = get_pte(pgdir, (i+1)*0x1000, 0);
-         //cprintf("i %d, check_ptep addr %x, value %x\n", i, check_ptep[i], *check_ptep[i]);
+         check_ptep[i] = get_pte(pgdir, (i+1)*0x1000, 0);//检查虚拟页对应的物理页针是否存在
+         cprintf("i %d, check_ptep addr %x, value %x\n", i, check_ptep[i], *check_ptep[i]);//存在 输出物理页针信息
          assert(check_ptep[i] != NULL);
          assert(pte2page(*check_ptep[i]) == check_rp[i]);
          assert((*check_ptep[i] & PTE_P));          
      }
      cprintf("set up init env for check_swap over!\n");
      // now access the virt pages to test  page relpacement algorithm 
-     ret=check_content_access();
+     ret=check_content_access();//页面置换算法
      assert(ret==0);
      
      //restore kernel mem env

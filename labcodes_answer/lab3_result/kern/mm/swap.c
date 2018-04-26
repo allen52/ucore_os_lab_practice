@@ -94,7 +94,7 @@ swap_out(struct mm_struct *mm, int n, int in_tick)
           }          
           //assert(!PageReserved(page));
 
-          //cprintf("SWAP: choose victim page 0x%08x\n", page);
+          cprintf("SWAP: choose victim page 0x%08x\n", page);
           
           v=page->pra_vaddr; 
           pte_t *ptep = get_pte(mm->pgdir, v, 0);

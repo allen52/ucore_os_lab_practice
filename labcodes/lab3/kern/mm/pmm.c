@@ -653,7 +653,7 @@ print_pgdir(void) {
                 left * PTSIZE, right * PTSIZE, (right - left) * PTSIZE, perm2str(perm));
         size_t l, r = left * NPTEENTRY;
         while ((perm = get_pgtable_items(left * NPTEENTRY, right * NPTEENTRY, r, vpt, &l, &r)) != 0) {
-            cprintf("  |-- PTE(%05x) %08x-%08x %08x %s\n", r - l,
+            cprintf("  |the count of these vma-- PTE(%05x) %08x-%08x %08x %s\n", r - l,
                     l * PGSIZE, r * PGSIZE, (r - l) * PGSIZE, perm2str(perm));
         }
     }
@@ -665,10 +665,10 @@ kmalloc(size_t n) {
     void * ptr=NULL;
     struct Page *base=NULL;
     assert(n > 0 && n < 1024*0124);
-    int num_pages=(n+PGSIZE-1)/PGSIZE;
-    base = alloc_pages(num_pages);
-    assert(base != NULL);
-    ptr=page2kva(base);
+    int num_pages=(n+PGSIZE-1)/PGSIZE;//4k对齐
+    base = alloc_pages(num_pages);//分配内存
+    assert(base != NULL);//assert
+    ptr=page2kva(base);//页表转换成虚拟内存地址
     return ptr;
 }
 
