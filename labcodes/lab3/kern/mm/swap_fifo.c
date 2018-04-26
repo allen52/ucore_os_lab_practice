@@ -78,44 +78,99 @@ _fifo_swap_out_victim(struct mm_struct *mm, struct Page ** ptr_page, int in_tick
 }
 
 static int
+_extended_clock_swap_out_victim(struct mm_struct *mm,struct Page ** ptr_page,int in_tick)
+{
+	list_entry_t *head = (list_entry_t*)mm->sm_priv;
+	assert(head != NULL);
+	assert(in_tick==0);
+
+	list_entry_t* le = head->prev;//最早被访问的页面
+	assert(head != le);
+	//如果dirty bit为0，则把此页换出到硬盘上；
+	//如果dirty bit为1，则将dirty bit置为0，继续访问下一个页。
+	while(le != head)
+	{
+		struct Page*p = le2page(le,pra_page_link);
+		pte_t* ptep = get_pte(mm->pgdir,p->pra_vaddr,0);
+		if(*ptep < 0x100)
+		{
+			break;
+		}
+/*if(!(*ptep & PTE_A))//未被访问 首先换出
+		{
+            list_del(le);
+            assert(p != NULL);
+            *ptr_page = p;
+            return 0;
+		}
+		else
+		{
+
+		}*/
+		if(!(*ptep&PTE_D))//dirty bit is 0
+		{
+			list_del(le);
+			assert(p!=NULL);
+			*ptr_page = p;
+			cprintf("extended clock:a dirty bit is found with extended clock!\n");
+			return 0;
+		}
+		else//dirty bit is 1 将其设置为0
+		{
+			*ptep^=PTE_D;//
+		}
+		le = le->prev;
+	}
+	le  = head->prev;
+	assert(head!=le);
+	struct Page*p = le2page(le,pra_page_link);
+	list_del(le);
+	assert(p!=NULL);
+	*ptr_page = p;
+	cprintf("extended clock:no dirty bit found  with extended clock!\n");
+	return 0;
+}
+
+
+static int
 _fifo_check_swap(void) {
     cprintf("write Virt Page c in fifo_check_swap\n");
     *(unsigned char *)0x3000 = 0x0c;
-    assert(pgfault_num==4);
+   // assert(pgfault_num==4);
     cprintf("write Virt Page a in fifo_check_swap\n");
     *(unsigned char *)0x1000 = 0x0a;
-    assert(pgfault_num==4);
+   // assert(pgfault_num==4);
     cprintf("write Virt Page d in fifo_check_swap\n");
     *(unsigned char *)0x4000 = 0x0d;
-    assert(pgfault_num==4);
+  //  assert(pgfault_num==4);
     cprintf("write Virt Page b in fifo_check_swap\n");
     *(unsigned char *)0x2000 = 0x0b;
-    assert(pgfault_num==4);
+   // assert(pgfault_num==4);
     cprintf("write Virt Page e in fifo_check_swap\n");
     *(unsigned char *)0x5000 = 0x0e;
-    assert(pgfault_num==5);
+   // assert(pgfault_num==5);
     cprintf("write Virt Page b in fifo_check_swap\n");
     *(unsigned char *)0x2000 = 0x0b;
-    assert(pgfault_num==5);
+  //  assert(pgfault_num==5);
     cprintf("write Virt Page a in fifo_check_swap\n");
     *(unsigned char *)0x1000 = 0x0a;
-    assert(pgfault_num==6);
+  //  assert(pgfault_num==6);
     cprintf("write Virt Page b in fifo_check_swap\n");
     *(unsigned char *)0x2000 = 0x0b;
-    assert(pgfault_num==7);
+  //  assert(pgfault_num==7);
     cprintf("write Virt Page c in fifo_check_swap\n");
     *(unsigned char *)0x3000 = 0x0c;
-    assert(pgfault_num==8);
+ //   assert(pgfault_num==8);
     cprintf("write Virt Page d in fifo_check_swap\n");
     *(unsigned char *)0x4000 = 0x0d;
-    assert(pgfault_num==9);
+ //   assert(pgfault_num==9);
     cprintf("write Virt Page e in fifo_check_swap\n");
     *(unsigned char *)0x5000 = 0x0e;
-    assert(pgfault_num==10);
+//    assert(pgfault_num==10);
     cprintf("write Virt Page a in fifo_check_swap\n");
     assert(*(unsigned char *)0x1000 == 0x0a);
     *(unsigned char *)0x1000 = 0x0a;
-    assert(pgfault_num==11);
+  //  assert(pgfault_num==11);
     return 0;
 }
 
@@ -139,12 +194,13 @@ _fifo_tick_event(struct mm_struct *mm)
 
 struct swap_manager swap_manager_fifo =
 {
-     .name            = "fifo swap manager",
+     .name            = "extended clock swap manager",
      .init            = &_fifo_init,
      .init_mm         = &_fifo_init_mm,
      .tick_event      = &_fifo_tick_event,
      .map_swappable   = &_fifo_map_swappable,
      .set_unswappable = &_fifo_set_unswappable,
      .swap_out_victim = &_fifo_swap_out_victim,
+     //.swap_out_victim = &_extended_clock_swap_out_victim,
      .check_swap      = &_fifo_check_swap,
 };
