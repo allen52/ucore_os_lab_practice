@@ -113,10 +113,10 @@ default_init_memmap(struct Page *base, size_t n) {
         p->flags = p->property = 0;
         set_page_ref(p, 0);
     }
-    base->property = n;
-    SetPageProperty(base);
-    nr_free += n;
-    list_add(&free_list, &(base->page_link));
+    base->property = n;//从base开始，后面连续内存空闲块的大小=0
+    SetPageProperty(base);//设置内存为空闲
+    nr_free += n;//free_list的空闲内存加n
+    list_add_before(&free_list, &(base->page_link));//在free_list前面插入空闲块指针
 }
 
 static struct Page *
@@ -135,14 +135,15 @@ default_alloc_pages(size_t n) {
         }
     }
     if (page != NULL) {
-        list_del(&(page->page_link));
-        if (page->property > n) {
-            struct Page *p = page + n;
-            p->property = page->property - n;
-            list_add(&free_list, &(p->page_link));
-    }
-        nr_free -= n;
-        ClearPageProperty(page);
+        if (page->property > n) {//大于n的话
+            struct Page *p = page + n;//找到p后面n个位置的页指针
+            p->property = page->property - n;//赋值给这个页指针
+            SetPageProperty(p);//表示空闲
+            list_add_after(&(page->page_link), &(p->page_link));//在page后加入p 依旧保持小地址在前，大地址在后的链接顺序，其中最后一个指针为free_list
+        }
+        list_del(&(page->page_link));//删除page指针
+        nr_free -= n;//free_list减去n
+        ClearPageProperty(page);//表示该page后n个页被占用
     }
     return page;
 }
@@ -174,8 +175,17 @@ default_free_pages(struct Page *base, size_t n) {
             list_del(&(p->page_link));
         }
     }
-    nr_free += n;
-    list_add(&free_list, &(base->page_link));
+    nr_free += n;//
+    le = list_next(&free_list);
+    while (le != &free_list) {
+        p = le2page(le, page_link);
+        if (base + base->property <= p) {
+            assert(base + base->property != p);
+            break;
+        }
+        le = list_next(le);
+    }//在链表中找base应该插入的位置
+    list_add_before(le, &(base->page_link));//在该位置前插入base
 }
 
 static size_t
