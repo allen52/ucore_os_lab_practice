@@ -44,6 +44,8 @@ struct proc_struct {
     int pid;                                    // Process ID
     int runs;                                   // the running times of Proces
     uintptr_t kstack;                           // Process kernel stack
+                                                // 对于内核线程，该栈就是运行时的程序使用的栈；
+                                                // 而对于普通进程，该栈是发生特权级改变的时候使保存被打断的硬件信息用的栈
     volatile bool need_resched;                 // bool value: need to be rescheduled to release CPU?
     struct proc_struct *parent;                 // the parent process
     struct mm_struct *mm;                       // Process's memory management field
