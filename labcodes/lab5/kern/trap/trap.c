@@ -59,12 +59,14 @@ idt_init(void) {
 		{
 			SETGATE(idt[i],0,GD_KTEXT,__vectors[i],DPL_KERNEL);
 		}
-		SETGATE(idt[T_SWITCH_TOK],0,GD_KTEXT,__vectors[T_SWITCH_TOK],DPL_USER);
+		//SETGATE(idt[T_SWITCH_TOK],0,GD_KTEXT,__vectors[T_SWITCH_TOK],DPL_USER);
+		//将时钟中断改成SYSCALL 中断
+		SETGATE(idt[T_SYSCALL], 1, GD_KTEXT, __vectors[T_SYSCALL], DPL_USER);
 		lidt(&idt_pd);
 		//asm_volatile("lidt idt_pd");
-     /* LAB5 YOUR CODE */ 
-     //you should update your lab1 code (just add ONE or TWO lines of code), let user app to use syscall to get the service of ucore
-     //so you should setup the syscall interrupt gate in here
+        /* LAB5 YOUR CODE */
+        //you should update your lab1 code (just add ONE or TWO lines of code), let user app to use syscall to get the service of ucore
+        //so you should setup the syscall interrupt gate in here
 }
 
 static const char *
@@ -231,13 +233,14 @@ trap_dispatch(struct trapframe *tf) {
         ticks++;
     	if(ticks%TICK_NUM == 0)
     	{
-    		print_ticks();
+    		//print_ticks();
+    		assert(current != NULL);
+    		current->need_resched = 1;//每个时钟周期(100)将时间片设置为需要调度
     	}
         /* LAB5 YOUR CODE */
         /* you should upate you lab1 code (just add ONE or TWO lines of code):
          *    Every TICK_NUM cycle, you should set current process's current->need_resched = 1
          */
-  
         break;
     case IRQ_OFFSET + IRQ_COM1:
         c = cons_getc();
