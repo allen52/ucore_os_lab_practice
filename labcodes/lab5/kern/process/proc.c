@@ -109,6 +109,18 @@ alloc_proc(void) {
      *       uint32_t wait_state;                        // waiting state
      *       struct proc_struct *cptr, *yptr, *optr;     // relations between processes
 	 */
+		proc->state = PROC_UNINIT;
+    	proc->pid = -1;
+    	proc->runs = 0;
+    	proc->kstack = 0;
+    	proc->need_resched = 0;
+    	proc->parent = NULL;
+    	proc->mm = NULL;
+    	memset(&(proc->context),0,sizeof(struct context));
+    	proc->tf = NULL;
+    	proc->cr3 = boot_cr3;
+    	proc->flags = 0;
+    	memset(proc->name, 0, PROC_NAME_LEN);
     }
     return proc;
 }
@@ -201,9 +213,9 @@ proc_run(struct proc_struct *proc) {
         local_intr_save(intr_flag);
         {
             current = proc;
-            load_esp0(next->kstack + KSTACKSIZE);
-            lcr3(next->cr3);
-            switch_to(&(prev->context), &(next->context));
+            load_esp0(next->kstack + KSTACKSIZE);//建立好内核线程或将来用户线程在执行特权态切换
+            lcr3(next->cr3);//进程之间页表切换
+            switch_to(&(prev->context), &(next->context));//执行现场切换
         }
         local_intr_restore(intr_flag);
     }
@@ -257,6 +269,7 @@ kernel_thread(int (*fn)(void *), void *arg, uint32_t clone_flags) {
     tf.tf_regs.reg_edx = (uint32_t)arg;
     tf.tf_eip = (uint32_t)kernel_thread_entry;
     return do_fork(clone_flags | CLONE_VM, 0, &tf);
+    //创建当前内核线程的一个副本，它们的执行上下文、代码、数据都一样，但是存储位置不同
 }
 
 // setup_kstack - alloc pages with size KSTACKPAGE as process kernel stack
@@ -387,7 +400,33 @@ do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf) {
      *   proc_list:    the process set's list
      *   nr_process:   the number of process set
      */
+    if((proc = alloc_proc()) == NULL)//首先调用alloc_proc，获得一块用户信息块
+    {
+    	goto fork_out;
+    }
+    proc->parent = current;
+    if(setup_kstack(proc) != 0)//为进程分配一个内核栈。
+    {
+    	goto bad_fork_cleanup_proc;
+    }
+    if(copy_mm(clone_flags,proc) != 0)//复制原进程的内存管理信息到新进程。
+    {
+    	goto bad_fork_cleanup_kstack;
+    }
 
+    copy_thread(proc,stack,tf);//复制原进程上下文到新进程
+    bool intr_flag;
+    local_intr_save(intr_flag);
+    {
+       proc->pid = get_pid();
+       hash_proc(proc);
+       list_add(&proc_list, &(proc->list_link));//将新进程添加到进程链表中
+       nr_process ++;
+    }
+    local_intr_restore(intr_flag);
+    wakeup_proc(proc);//唤醒进程
+    ret = proc->pid;//返回pid
+    
     //    1. call alloc_proc to allocate a proc_struct
     //    2. call setup_kstack to allocate a kernel stack for child process
     //    3. call copy_mm to dup OR share mm according clone_flag
@@ -744,7 +783,7 @@ static int
 kernel_execve(const char *name, unsigned char *binary, size_t size) {
     int ret, len = strlen(name);
     asm volatile (
-        "int %1;"
+        "int %1;"//中断
         : "=a" (ret)
         : "i" (T_SYSCALL), "0" (SYS_exec), "d" (name), "c" (len), "b" (binary), "D" (size)
         : "memory");
@@ -822,13 +861,13 @@ proc_init(void) {
         panic("cannot alloc idleproc.\n");
     }
 
-    idleproc->pid = 0;
-    idleproc->state = PROC_RUNNABLE;
-    idleproc->kstack = (uintptr_t)bootstack;
-    idleproc->need_resched = 1;
+    idleproc->pid = 0;//第0个内核进程
+    idleproc->state = PROC_RUNNABLE;//从未初始化到可执行
+    idleproc->kstack = (uintptr_t)bootstack;//设置内核栈的起始地址
+    idleproc->need_resched = 1;//开启调度器
     set_proc_name(idleproc, "idle");
     nr_process ++;
-
+    //首先生成一个idle process
     current = idleproc;
 
     int pid = kernel_thread(init_main, NULL, 0);
