@@ -119,6 +119,34 @@ alloc_proc(void) {
      *     uint32_t lab6_stride;                       // FOR LAB6 ONLY: the current stride of the process
      *     uint32_t lab6_priority;                     // FOR LAB6 ONLY: the priority of process, set by lab6_set_priority(uint32_t)
      */
+        proc->state = PROC_UNINIT;
+    	proc->pid = -1;
+    	proc->runs = 0;
+    	proc->kstack = 0;
+    	proc->need_resched = 0;
+    	proc->parent = NULL;
+    	proc->mm = NULL;
+    	memset(&(proc->context),0,sizeof(struct context));
+    	proc->tf = NULL;
+    	proc->cr3 = boot_cr3;
+    	proc->flags = 0;
+    	memset(proc->name, 0, PROC_NAME_LEN);
+    	proc->wait_state = 0;//初始化进程等待状态
+    	proc->cptr = proc->yptr = proc->optr = NULL;//进程相关关系的指针初始化
+    	proc->rq = NULL;//初始化运行队列为空
+    	list_init(&(proc->run_link));//初始化运行队列的指针
+    	proc->time_slice = 0;//初始化时间片
+    	proc->lab6_run_pool.left = NULL;
+    	proc->lab6_run_pool.right = NULL;
+    	proc->lab6_run_pool.parent = NULL; //初始化各类指针为空，包括父进程等待
+    	proc->lab6_stride = 0;//步数初始化
+    	proc->lab6_priority = 0;//初始化优先级
+    	/*
+    	 parent:           proc->parent  (proc is children)
+		 children:         proc->cptr    (proc is parent)
+		 older sibling:    proc->optr    (proc is younger sibling)
+		 younger sibling:  proc->yptr    (proc is older sibling)
+    	 */
     }
     return proc;
 }
@@ -406,6 +434,36 @@ do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf) {
     //    6. call wakeup_proc to make the new child process RUNNABLE
     //    7. set ret vaule using child proc's pid
 
+    if((proc = alloc_proc()) == NULL)//首先调用alloc_proc，获得一块用户信息块
+    {
+    	goto fork_out;
+    }
+    proc->parent = current;
+    assert(current->wait_state == 0);//确保当前进程正在等待
+
+    if(setup_kstack(proc) != 0)//为进程分配一个内核栈。
+    {
+    	goto bad_fork_cleanup_proc;
+    }
+    if(copy_mm(clone_flags,proc) != 0)//复制原进程的内存管理信息到新进程。
+    {
+    	goto bad_fork_cleanup_kstack;
+    }
+
+    copy_thread(proc,stack,tf);//复制原进程上下文到新进程
+    bool intr_flag;
+    local_intr_save(intr_flag);
+    {
+       proc->pid = get_pid();
+       hash_proc(proc);
+       set_links(proc);//由set_links函数代替管理proc
+    //   list_add(&proc_list, &(proc->list_link));//将新进程添加到进程链表中
+    //   nr_process ++;
+    }
+    local_intr_restore(intr_flag);
+    wakeup_proc(proc);//唤醒进程
+    ret = proc->pid;//返回pid
+
 	//LAB5 YOUR CODE : (update LAB4 steps)
    /* Some Functions
     *    set_links:  set the relation links of process.  ALSO SEE: remove_links:  lean the relation links of process 
@@ -612,6 +670,11 @@ load_icode(unsigned char *binary, size_t size) {
      *          tf_eip should be the entry point of this binary program (elf->e_entry)
      *          tf_eflags should be set to enable computer to produce Interrupt
      */
+    tf->tf_cs = USER_CS;
+    tf->tf_ds = tf->tf_es = tf->tf_ss = USER_DS;
+    tf->tf_esp = USTACKTOP;
+    tf->tf_eip = elf->e_entry;
+    tf->tf_eflags = FL_IF;
     ret = 0;
 out:
     return ret;

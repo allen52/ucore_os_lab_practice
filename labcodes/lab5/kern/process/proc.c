@@ -123,6 +123,7 @@ alloc_proc(void) {
     	memset(proc->name, 0, PROC_NAME_LEN);
     	proc->wait_state = 0;//初始化进程等待状态
     	proc->cptr = proc->yptr = proc->optr = NULL;//进程相关关系的指针初始化
+
     	/*
     	 parent:           proc->parent  (proc is children)
 		 children:         proc->cptr    (proc is parent)
@@ -549,9 +550,9 @@ load_icode(unsigned char *binary, size_t size) {
     //(3) copy TEXT/DATA section, build BSS parts in binary to memory space of process
     struct Page *page;
     //(3.1) get the file header of the bianry program (ELF format)
-    struct elfhdr *elf = (struct elfhdr *)binary;
+    struct elfhdr *elf = (struct elfhdr *)binary;//file head
     //(3.2) get the entry of the program section headers of the bianry program (ELF format)
-    struct proghdr *ph = (struct proghdr *)(binary + elf->e_phoff);
+    struct proghdr *ph = (struct proghdr *)(binary + elf->e_phoff);//program head
     //(3.3) This program is valid?
     if (elf->e_magic != ELF_MAGIC) {
         ret = -E_INVAL_ELF;

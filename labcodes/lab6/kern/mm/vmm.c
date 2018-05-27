@@ -453,10 +453,10 @@ do_pgfault(struct mm_struct *mm, uint32_t error_code, uintptr_t addr) {
     */
 #if 0
     /*LAB3 EXERCISE 1: YOUR CODE*/
-    ptep = ???              //(1) try to find a pte, if pte's PT(Page Table) isn't existed, then create a PT.
+    ptep = get_pte(mm->pgdir,addr,1);              //(1) try to find a pte, if pte's PT(Page Table) isn't existed, then create a PT.
     if (*ptep == 0) {
                             //(2) if the phy addr isn't exist, then alloc a page & map the phy addr with logical addr
-
+    		pgdir_alloc_page(mm->pgdir,addr,PTE_W);
     }
     else {
     /*LAB3 EXERCISE 2: YOUR CODE
@@ -493,6 +493,46 @@ do_pgfault(struct mm_struct *mm, uint32_t error_code, uintptr_t addr) {
         }
    }
 #endif
+if( (ptep = get_pte(mm->pgdir,addr,1)) == NULL)
+    {
+    	cprintf("get_pte in do_pgfault failed\n");//addr对应pte不存在
+    	goto failed;
+    }
+    if(*ptep == 0)
+    {
+        if ((pgdir_alloc_page(mm->pgdir,addr,perm)) == NULL)
+        {
+        	cprintf("pgdir_alloc_page in do_pgfault failed\n");//pte项目为0 则分配物理内存给addr
+        	goto failed;
+        }
+        else
+        {
+        	cprintf("pgdir_alloc_page in do_pgfault done\n");
+        }
+    }
+    else
+    {
+    	//否则 调用页面置换算法
+        if(swap_init_ok) {
+                                    //(1）According to the mm AND addr, try to load the content of right disk page
+                                    //    into the memory which page managed.
+                                    //(2) According to the mm, addr AND page, setup the map of phy addr <---> logical addr
+                                    //(3) make the page swappable.
+            struct Page *page=NULL;
+            if ((ret = swap_in(mm, addr, &page)) != 0) {
+            	//mm上addr对应的pte没有对应物理页，因此从内存分配一个page，将磁盘pte写入page
+                cprintf("swap_in in do_pgfault failed\n");
+            goto failed;
+            }
+            page_insert(mm->pgdir, page, addr, perm);//建立la和pa的对应关系
+            swap_map_swappable(mm, addr, page, 1);//设置该页可以被swap
+            page->pra_vaddr = addr;
+        }
+        else {
+            cprintf("no swap_init_ok but ptep is %x, failed\n",*ptep);
+            goto failed;
+        }
+    }
    ret = 0;
 failed:
     return ret;
